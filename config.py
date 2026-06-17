@@ -10,8 +10,14 @@ class Config:
     val_split: float = 0.1
     # 128³ patches leverage the 32 GB VRAM on RTX 5090
     patch_size: Tuple[int, int, int] = (128, 128, 128)
-    # Cache the full dataset in RAM (use 0.0 if system RAM < 16 GB)
-    cache_rate: float = 1.0
+    # cache_rate: fraction of dataset held in RAM after transforms.
+    # 1251 subjects × 5 files × ~30 MB = ~170 GB → 0.1 ≈ 17 GB (safe for 32 GB RAM)
+    # Set to 0.0 to disable caching entirely (reads from NVMe each epoch instead).
+    cache_rate: float = 0.1
+    # Workers used by CacheDataset during the one-time pre-cache phase.
+    # Keep low (2–4) to avoid parallel RAM spikes during caching.
+    cache_num_workers: int = 4
+    # Workers used by DataLoader during training (fast, no large memory overhead).
     num_workers: int = 8
     pin_memory: bool = True
 

@@ -198,18 +198,22 @@ def build_datasets(cfg, logger=None):
             f"Cache rate: {cfg.cache_rate}"
         )
 
+    # cache_num_workers controls parallel RAM usage during the one-time cache phase.
+    # It is deliberately smaller than DataLoader num_workers to avoid OOM on caching.
+    cache_nw = getattr(cfg, 'cache_num_workers', min(cfg.num_workers, 4))
+
     train_ds = CacheDataset(
         data=train_subjects,
         transform=build_train_transforms(cfg.patch_size, keys),
         cache_rate=cfg.cache_rate,
-        num_workers=cfg.num_workers,
+        num_workers=cache_nw,
     )
 
     val_ds = CacheDataset(
         data=val_subjects,
         transform=build_val_transforms(keys),
         cache_rate=0.0,         # val set is small — load on-the-fly
-        num_workers=cfg.num_workers,
+        num_workers=cache_nw,
     )
 
     # persistent_workers=True avoids re-spawning worker processes each epoch.
