@@ -36,6 +36,7 @@ from monai.transforms import (
     RandShiftIntensityd,
     RandSpatialCropSamplesd,
     Spacingd,
+    SpatialPadd,
 )
 from monai.data.utils import pad_list_data_collate
 
@@ -120,6 +121,10 @@ def build_train_transforms(patch_size: Tuple[int, int, int],
         NormalizeIntensityd(keys=image_keys, nonzero=True, channel_wise=True),
         # Tight brain crop — removes empty background to maximise useful patch content
         CropForegroundd(keys=all_keys, source_key="voided", margin=10),
+        # Some subjects have thin brains (<128 mm in one axis after foreground crop).
+        # Pad those volumes to at least patch_size so RandSpatialCropSamplesd can
+        # always extract a full-size patch without returning a smaller crop.
+        SpatialPadd(keys=all_keys, spatial_size=patch_size, mode="constant"),
         # 2 random crops per volume → doubles effective iterations per epoch
         RandSpatialCropSamplesd(
             keys=all_keys,

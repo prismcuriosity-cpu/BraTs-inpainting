@@ -847,22 +847,33 @@ class Decoder3D(nn.Module):
             nn.Conv3d(32, out_ch, 1),
         )
 
-    def forward(self, feats: List[torch.Tensor]) -> torch.Tensor:
-        """feats: [lvl0_feat, lvl1_feat, ..., lvlN_feat] from encoder (low-res last)."""
+    def forward(self, feats: List[torch.Tensor],
+                target_size: Optional[Tuple[int, ...]] = None) -> torch.Tensor:
+        """
+        feats       : [lvl0_feat, lvl1_feat, ..., lvlN_feat] from encoder (low-res last)
+        target_size : original encoder input spatial dims — used for the final upsample
+                      so that odd-dimension inputs (e.g. 113) are restored exactly.
+                      Falls back to scale_factor=2 when not provided.
+        """
         x = feats[-1]           # deepest (smallest spatial, most channels)
 
         # Walk from deep to shallow
         for i, up in enumerate(self.ups):
             skip = feats[-(i + 2)]      # next-shallower encoder feat
-            # Upsample x to match skip spatial size
+            # Upsample x to match skip spatial size exactly (handles odd dims)
             x = F.interpolate(x, size=skip.shape[2:],
                                mode="trilinear", align_corners=False)
             x = torch.cat([x, skip], dim=1)
             x = up(x)
 
-        # Final upsample to input resolution (encoder halved each level)
-        x = F.interpolate(x, scale_factor=2.0,
-                           mode="trilinear", align_corners=False)
+        # Final upsample: use the known original input size when available so
+        # that e.g. W=113 → encoder level-0 W=57 → 57×2=114 ≠ 113 is avoided.
+        if target_size is not None:
+            x = F.interpolate(x, size=target_size,
+                               mode="trilinear", align_corners=False)
+        else:
+            x = F.interpolate(x, scale_factor=2.0,
+                               mode="trilinear", align_corners=False)
         return self.final_up(x)
 
 
@@ -1018,8 +1029,9 @@ class FlowLet3D_Inpainting(nn.Module):
         # 3. Symmetry attention on deepest feature
         enc_feats[-1] = self.sym_attn(enc_feats[-1])
 
-        # 4. Decoder reconstruction
-        pred = self.decoder(enc_feats)                        # (B,1,D,H,W)
+        # 4. Decoder reconstruction — pass original spatial dims so the final
+        #    upsample hits exactly (D,H,W) even when any dim is odd.
+        pred = self.decoder(enc_feats, target_size=voided.shape[2:])
         pred = torch.tanh(pred)
 
         # 5. Composite: keep original outside mask, predict inside
@@ -1044,7 +1056,9 @@ class FlowLet3D_Inpainting(nn.Module):
         inp  = torch.cat([voided, mask], dim=1)
         enc_feats = self.encoder(inp)
         enc_feats[-1] = self.sym_attn(enc_feats[-1])
-        dec_pred  = torch.tanh(self.decoder(enc_feats))      # (B,1,D,H,W)
+        dec_pred  = torch.tanh(
+            self.decoder(enc_feats, target_size=voided.shape[2:])
+        )                                                     # (B,1,D,H,W)
 
         # --- Flow path ---
         voided_wav = self._to_wavelet(voided)                # (B,8,D/2,H/2,W/2)
