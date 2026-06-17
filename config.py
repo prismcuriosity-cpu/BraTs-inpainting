@@ -25,7 +25,9 @@ class Config:
     in_channels: int = 2            # voided + mask
     out_channels: int = 1           # healthy t1n
     wavelet_name: str = "haar"
-    model_channels: int = 96        # 96 → channels (96,192,384,768) per level
+    # 64 channels → levels (64,128,256,512); safe at 128³ patches with 32 GB VRAM.
+    # Do NOT raise to 96 unless you reduce patch_size back to 96³.
+    model_channels: int = 64
     channel_mult: Tuple[int, ...] = (1, 2, 4, 8)
     num_res_blocks: int = 2
     attention_resolutions: Tuple[int, ...] = (8, 4)
@@ -62,7 +64,10 @@ class Config:
     ssim_win_size: int = 7
 
     # ------------------------------------------------------------- Training
-    batch_size: int = 2             # 2 × 128³ patches fit easily in 32 GB VRAM
+    # batch_size=1 with grad_accumulation_steps=2 gives effective batch=2
+    # while keeping peak VRAM under ~20 GB at 128³ patches.
+    batch_size: int = 1
+    grad_accumulation_steps: int = 2   # accumulate gradients before each optimizer step
     num_epochs: int = 200
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5

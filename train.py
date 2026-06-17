@@ -205,6 +205,7 @@ def train(cfg: Config, resume: Optional[str] = None):
 
     # ---- Training loop ----
     raw_model = model.module if isinstance(model, DDP) else model
+    grad_accum = getattr(cfg, "grad_accumulation_steps", 1)
 
     for epoch in range(start_epoch, cfg.num_epochs):
         model.train()
@@ -212,29 +213,34 @@ def train(cfg: Config, resume: Optional[str] = None):
         epoch_loss  = 0.0
         n_batches   = 0
 
-        for batch in train_loader:
+        optim.zero_grad(set_to_none=True)
+
+        for step, batch in enumerate(train_loader):
             voided = batch["voided"].to(device, non_blocking=True)
             mask   = batch["mask"].to(device,   non_blocking=True)
             target = batch["image"].to(device,  non_blocking=True)
-
-            optim.zero_grad(set_to_none=True)
 
             with autocast(enabled=cfg.amp):
                 out       = model(voided, mask)
                 pred      = out["pred"]
                 flow_loss = raw_model.compute_flow_loss(voided, target, mask)
                 losses    = criterion(pred, target, mask, flow_loss)
-                loss      = losses["total"]
+                # Divide by accumulation steps so gradients average over the
+                # effective batch (equivalent to training with batch_size * grad_accum)
+                loss      = losses["total"] / grad_accum
 
             scaler.scale(loss).backward()
-            scaler.unscale_(optim)
-            nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-            scaler.step(optim)
-            scaler.update()
-            sched.step()
-            ema.update(raw_model)
 
-            epoch_loss += loss.item()
+            if (step + 1) % grad_accum == 0:
+                scaler.unscale_(optim)
+                nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                scaler.step(optim)
+                scaler.update()
+                optim.zero_grad(set_to_none=True)
+                sched.step()
+                ema.update(raw_model)
+
+            epoch_loss += loss.item() * grad_accum   # log unscaled loss
             n_batches  += 1
 
         epoch_loss /= max(n_batches, 1)
