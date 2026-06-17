@@ -5,26 +5,29 @@ from typing import Tuple, List, Optional
 @dataclass
 class Config:
     # ------------------------------------------------------------------ Data
-    data_root: str = "/kaggle/input/brats-inpainting-training"
+    # Windows path — forward slashes work fine with pathlib on Windows
+    data_root: str = "D:/M Challange/Inpainting/Data"
     val_split: float = 0.1
-    patch_size: Tuple[int, int, int] = (96, 96, 96)
-    cache_rate: float = 0.1
-    num_workers: int = 4
+    # 128³ patches leverage the 32 GB VRAM on RTX 5090
+    patch_size: Tuple[int, int, int] = (128, 128, 128)
+    # Cache the full dataset in RAM (use 0.0 if system RAM < 16 GB)
+    cache_rate: float = 1.0
+    num_workers: int = 8
     pin_memory: bool = True
 
     # ----------------------------------------------------------------- Model
     in_channels: int = 2            # voided + mask
     out_channels: int = 1           # healthy t1n
     wavelet_name: str = "haar"
-    model_channels: int = 64
+    model_channels: int = 96        # 96 → channels (96,192,384,768) per level
     channel_mult: Tuple[int, ...] = (1, 2, 4, 8)
     num_res_blocks: int = 2
     attention_resolutions: Tuple[int, ...] = (8, 4)
     num_heads: int = 8
     num_head_channels: int = -1
     dropout: float = 0.1
-    use_checkpoint: bool = True
-    use_xformers: bool = False      # set True if xformers installed
+    use_checkpoint: bool = True     # gradient checkpointing — keep True for safety
+    use_xformers: bool = False      # set True if xformers is installed
     use_scale_shift_norm: bool = True
     resblock_updown: bool = True
     norm_num_groups: int = 32
@@ -32,7 +35,7 @@ class Config:
 
     # --------------------------------------------------------- Flow matching
     flow_type: str = "rectified"    # rectified | cfm | trigonometric | vp_diffusion
-    num_flow_steps: int = 50        # ODE integration steps at inference
+    num_flow_steps: int = 20        # ODE steps at inference (20 is fast + accurate)
     lll_loss_weight: float = 0.6    # wavelet LLL sub-band weight
     detail_loss_weight: float = 0.4 # wavelet detail sub-band weight
     vp_beta_min: float = 0.1
@@ -53,13 +56,13 @@ class Config:
     ssim_win_size: int = 7
 
     # ------------------------------------------------------------- Training
-    batch_size: int = 1
+    batch_size: int = 2             # 2 × 128³ patches fit easily in 32 GB VRAM
     num_epochs: int = 200
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
     warmup_epochs: int = 10
     grad_clip: float = 1.0
-    amp: bool = True
+    amp: bool = True                # BF16 auto-selected on Blackwell (5090)
     ema_decay: float = 0.9999
 
     # --------------------------------------------------------- Checkpointing
@@ -70,8 +73,8 @@ class Config:
     early_stop_patience: int = 30
 
     # --------------------------------------------------------------- Inference
-    sw_batch_size: int = 2
-    sw_overlap: float = 0.5
+    sw_batch_size: int = 4          # 4 parallel sliding-window crops on 32 GB VRAM
+    sw_overlap: float = 0.25        # 25 % overlap is faster; 0.5 for max quality
     tta_flips: List[int] = field(default_factory=lambda: [2, 3, 4])
 
     # ------------------------------------------------------------------ DDP

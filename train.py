@@ -51,6 +51,22 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# GPU performance flags — Blackwell / Ampere (RTX 5090 / 4090 etc.)
+# ---------------------------------------------------------------------------
+
+def _configure_gpu():
+    if not torch.cuda.is_available():
+        return
+    # TF32 gives ~3× throughput of FP32 on Ampere+ with negligible accuracy loss
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32       = True
+    # 'high' lets PyTorch automatically use BF16/TF32 kernels for FP32 matmuls
+    torch.set_float32_matmul_precision("high")
+    # cuDNN auto-tuner finds the fastest conv algorithm for fixed spatial sizes
+    torch.backends.cudnn.benchmark        = True
+
+
+# ---------------------------------------------------------------------------
 # EMA
 # ---------------------------------------------------------------------------
 
@@ -135,6 +151,8 @@ def _load(path: str, model: nn.Module, ema: Optional[EMA] = None,
 # ---------------------------------------------------------------------------
 
 def train(cfg: Config, resume: Optional[str] = None):
+    _configure_gpu()
+
     # ---- DDP setup ----
     if cfg.ddp:
         dist.init_process_group("nccl")
@@ -267,7 +285,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_epochs",    type=int, default=CFG.num_epochs)
     parser.add_argument("--batch_size",    type=int, default=CFG.batch_size)
     parser.add_argument("--patch_size",    type=int, nargs=3,
-                        default=list(CFG.patch_size))
+                        default=list(CFG.patch_size),
+                        help="Patch size (default: 128 128 128 for RTX 5090)")
     parser.add_argument("--model_channels",type=int, default=CFG.model_channels)
     parser.add_argument("--flow_type",     type=str, default=CFG.flow_type)
     parser.add_argument("--lr",            type=float, default=CFG.learning_rate)

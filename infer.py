@@ -215,7 +215,7 @@ if __name__ == "__main__":
     parser.add_argument("--mask",    required=True, help="Path to mask.nii.gz")
     parser.add_argument("--output",  required=True, help="Output path (predicted_t1n.nii.gz)")
     parser.add_argument("--ckpt",    required=True, help="Checkpoint path")
-    parser.add_argument("--patch_size", type=int, nargs=3, default=[96, 96, 96])
+    parser.add_argument("--patch_size", type=int, nargs=3, default=[128, 128, 128])
     parser.add_argument("--no_tta",  action="store_true")
     parser.add_argument("--device",  type=str, default="auto")
     args = parser.parse_args()
