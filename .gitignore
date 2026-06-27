@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Checkpoints and logs
+checkpoints/
+logs/
+*.pt
+*.pth
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data
+*.nii
+*.nii.gz
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
